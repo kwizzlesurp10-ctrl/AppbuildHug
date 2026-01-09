@@ -18,7 +18,7 @@ except ImportError:
 
 # Try to import Gemini (optional)
 try:
-    from google import genai
+    import google.generativeai as genai
     GEMINI_AVAILABLE = True
 except ImportError:
     GEMINI_AVAILABLE = False
@@ -32,12 +32,14 @@ DEMO_BLUEPRINT = """
 # Project Blueprint: {project_name}
 
 ## Tech Stack
-- **Frontend**: React 19 + TypeScript + Tailwind CSS
-- **Backend**: Next.js 15 App Router + tRPC
-- **Database**: PostgreSQL with Drizzle ORM
-- **Authentication**: NextAuth.js with OAuth providers
-- **AI Integration**: OpenAI API / Anthropic Claude
-- **Deployment**: Vercel (Frontend) + Railway (Backend)
+- **Frontend**: React 19 + TypeScript + Tailwind CSS + React Query
+- **Backend**: Next.js 15 App Router + tRPC + Zod validation
+- **Database**: PostgreSQL with Drizzle ORM + Database migrations
+- **Authentication**: NextAuth.js with JWT + OAuth providers + Role-based access
+- **API Integration**: RESTful APIs + GraphQL + Webhooks + Real-time WebSockets
+- **AI Integration**: OpenAI API / Anthropic Claude / Custom ML models
+- **Deployment**: Vercel (Frontend) + Railway (Backend) + API Gateway
+- **Monitoring**: Sentry + DataDog + API analytics
 
 ## Architecture Overview
 ```
@@ -46,40 +48,381 @@ DEMO_BLUEPRINT = """
 │   (React)   │     │  (Next.js)  │     │ (PostgreSQL)│
 └─────────────┘     └─────────────┘     └─────────────┘
        │                   │                   │
+       │                   │                   │
+┌──────▼──────┐   ┌────────▼────────┐   ┌──────▼──────┐
+│  External   │   │    API Layer   │   │   Cache     │
+│   APIs      │   │   (REST+Graph) │   │  (Redis)    │
+│             │   │                │   │             │
+│ • Payment   │   │ • Rate Limiting│   │ • Sessions  │
+│ • Email     │   │ • CORS         │   │ • API Resp  │
+│ • SMS       │   │ • Validation   │   │ • User Data │
+│ • Analytics │   │ • Docs/Swagger│   │             │
+└─────────────┘   └────────────────┘   └─────────────┘
+       │                   │                   │
        └───────────────────┴───────────────────┘
                           │
                    ┌──────▼──────┐
                    │  AI Service │
                    │  (OpenAI)   │
+                   │             │
+                   │ • Text Gen  │
+                   │ • Embeddings│
+                   │ • Moderation│
+                   │ • Fine-tune │
                    └─────────────┘
 ```
+
+## 🔗 API Integration Architecture
+
+### Core API Design Patterns
+- **RESTful Resources**: CRUD operations with proper HTTP methods
+- **HATEOAS**: Hypermedia links for API discoverability
+- **Content Negotiation**: JSON/XML support with Accept headers
+- **Versioning Strategy**: URL-based (`/api/v1/`) and header-based
+- **Filtering & Pagination**: Cursor-based pagination for large datasets
+- **Field Selection**: GraphQL-like field selection with `?fields=`
+
+### API Security & Authentication
+```typescript
+// JWT Authentication with refresh tokens
+interface AuthTokens {{
+  accessToken: string;
+  refreshToken: string;
+  expiresIn: number;
+}}
+
+// Role-based access control (RBAC)
+enum UserRole {{
+  ADMIN = 'admin',
+  USER = 'user',
+  MODERATOR = 'moderator'
+}}
+
+// API Key management for external integrations
+interface APIKey {{
+  id: string;
+  name: string;
+  key: string;
+  permissions: string[];
+  rateLimit: number;
+}}
+```
+
+### Rate Limiting & DDoS Protection
+- **Token Bucket Algorithm**: Smooth rate limiting per user/IP
+- **Circuit Breaker Pattern**: Automatic failover for external APIs
+- **Request Queuing**: Async processing for high-volume endpoints
+- **Caching Strategy**: Redis for API response caching
 
 ## Key Files Structure
 ```
 project-root/
 ├── app/
+│   ├── api/
+│   │   ├── v1/
+│   │   │   ├── users/
+│   │   │   │   ├── route.ts          # GET/POST /api/v1/users
+│   │   │   │   └── [id]/
+│   │   │   │       ├── route.ts      # GET/PUT/DELETE /api/v1/users/[id]
+│   │   │   │       └── posts/
+│   │   │   │           └── route.ts  # GET /api/v1/users/[id]/posts
+│   │   ├── auth/
+│   │   │   ├── [...nextauth]/
+│   │   │   └── callback/
+│   │   └── webhooks/
+│   │       ├── stripe/
+│   │       └── github/
 │   ├── layout.tsx
-│   ├── page.tsx
-│   └── api/
-│       └── trpc/
-│           └── [trpc]/
+│   └── page.tsx
 ├── components/
+│   ├── api/
+│   │   ├── APIClient.tsx            # Centralized API client
+│   │   ├── hooks/                   # React Query hooks
+│   │   │   ├── useUsers.ts
+│   │   │   └── usePosts.ts
+│   │   └── types/                   # TypeScript API types
 │   ├── ui/
 │   └── features/
-├── server/
-│   ├── routers/
-│   └── db/
 ├── lib/
+│   ├── api/                         # API utilities
+│   │   ├── client.ts               # Axios/Fetch wrapper
+│   │   ├── auth.ts                 # Auth helpers
+│   │   ├── validation.ts           # Zod schemas
+│   │   └── rate-limit.ts           # Rate limiting
+│   ├── db/
+│   │   ├── schema.ts               # Drizzle schema
+│   │   ├── migrations/             # DB migrations
+│   │   └── seed.ts                 # Seed data
 │   └── utils.ts
+├── server/
+│   ├── api/                        # tRPC routers
+│   │   ├── routers/
+│   │   │   ├── users.ts
+│   │   │   └── posts.ts
+│   │   └── trpc.ts                 # tRPC setup
+│   └── auth.ts                     # NextAuth config
+├── middleware.ts                   # API middleware
+├── docs/
+│   ├── api/
+│   │   ├── swagger.json           # OpenAPI spec
+│   │   └── redoc.html             # API documentation
+│   └── README.md
 └── package.json
 ```
 
-## Next Steps
-1. Initialize Next.js project with TypeScript
-2. Set up Drizzle ORM and database schema
-3. Configure tRPC endpoints
-4. Implement authentication flow
-5. Build core features iteratively
+## 🚀 API Integration Implementation
+
+### 1. External API Integrations
+```typescript
+// Payment processing (Stripe)
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
+const paymentIntent = await stripe.paymentIntents.create({{
+  amount: 1000,
+  currency: 'usd',
+  metadata: {{ orderId: '123' }}
+}});
+
+// Email service (SendGrid/Resend)
+const resend = new Resend(process.env.RESEND_API_KEY);
+await resend.emails.send({{
+  from: 'noreply@yourapp.com',
+  to: user.email,
+  subject: 'Welcome!',
+  html: welcomeTemplate
+}});
+
+// File storage (AWS S3/Cloudflare R2)
+const s3Client = new S3Client({{
+  region: 'us-east-1',
+  credentials: {{
+    accessKeyId: process.env.AWS_ACCESS_KEY_ID,
+    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY
+  }}
+}});
+```
+
+### 2. Webhook Handling
+```typescript
+// Secure webhook verification
+export async function POST(request: Request) {{
+  const body = await request.text();
+  const signature = request.headers.get('stripe-signature');
+
+  try {{
+    const event = stripe.webhooks.constructEvent(
+      body,
+      signature,
+      process.env.STRIPE_WEBHOOK_SECRET
+    );
+
+    // Process webhook event
+    switch (event.type) {{
+      case 'payment_intent.succeeded':
+        await handlePaymentSuccess(event.data.object);
+        break;
+      case 'customer.subscription.deleted':
+        await handleSubscriptionCancel(event.data.object);
+        break;
+    }}
+
+    return Response.json({{ received: true }});
+  }} catch (error) {{
+    return Response.json({{ error: 'Invalid signature' }}, {{ status: 400 }});
+  }}
+}}
+```
+
+### 3. Real-time APIs (WebSockets)
+```typescript
+// Next.js API route for WebSocket upgrades
+import {{ NextApiRequest }} from 'next';
+import {{ Server as HTTPServer }} from 'http';
+import {{ Socket } from 'net';
+
+export default function handler(req: NextApiRequest, res: any) {{
+  if (req.method !== 'GET') {{
+    res.status(405).end();
+    return;
+  }}
+
+  // Upgrade to WebSocket
+  const { wss } = res.socket.server;
+  wss.handleUpgrade(req, req.socket, Buffer.alloc(0), (ws) => {{
+    wss.emit('connection', ws, req);
+  });
+}}
+```
+
+## 🔧 API Development Workflow
+
+### API Documentation (OpenAPI/Swagger)
+```yaml
+openapi: 3.0.3
+info:
+  title: {project_name} API
+  version: 1.0.0
+  description: RESTful API for {project_name}
+
+servers:
+  - url: https://api.yourapp.com/v1
+    description: Production server
+
+paths:
+  /users:
+    get:
+      summary: Get users list
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/User'
+                  pagination:
+                    $ref: '#/components/schemas/Pagination'
+```
+
+### API Testing Strategy
+```typescript
+// Unit tests for API routes
+describe('/api/users', () => {{
+  it('should return users list', async () => {{
+    const response = await fetch('/api/v1/users');
+    expect(response.status).toBe(200);
+
+    const data = await response.json();
+    expect(Array.isArray(data.data)).toBe(true);
+  }});
+
+  it('should create new user', async () => {{
+    const response = await fetch('/api/v1/users', {{
+      method: 'POST',
+      headers: {{ 'Content-Type': 'application/json' }},
+      body: JSON.stringify({{
+        name: 'John Doe',
+        email: 'john@example.com'
+      }})
+    }});
+    expect(response.status).toBe(201);
+  }});
+}});
+```
+
+## 📊 Monitoring & Analytics
+
+### API Performance Metrics
+- **Response Times**: P95, P99 latency tracking
+- **Error Rates**: 4xx/5xx status code monitoring
+- **Throughput**: Requests per second/minute
+- **Success Rates**: API endpoint reliability
+
+### Logging Strategy
+```typescript
+// Structured logging with correlation IDs
+const logger = winston.createLogger({{
+  level: 'info',
+  format: winston.format.combine(
+    winston.format.timestamp(),
+    winston.format.errors({{ stack: true }}),
+    winston.format.json()
+  ),
+  transports: [
+    new winston.transports.File({{ filename: 'api.log' }})
+  ]
+}});
+
+// Request logging middleware
+export function apiLogger(req: NextRequest, res: NextResponse) {{
+  const start = Date.now();
+  const correlationId = req.headers.get('x-correlation-id') || uuidv4();
+
+  logger.info('API Request', {{
+    method: req.method,
+    url: req.url,
+    correlationId,
+    userAgent: req.headers.get('user-agent'),
+    ip: req.ip
+  }});
+
+  // Log response
+  res.on('finish', () => {{
+    logger.info('API Response', {{
+      method: req.method,
+      url: req.url,
+      status: res.statusCode,
+      duration: Date.now() - start,
+      correlationId
+    }});
+  }});
+}}
+```
+
+## 🚀 Implementation Steps
+
+### Phase 1: Core API Foundation
+1. **Set up Next.js API routes** with TypeScript
+2. **Implement authentication** (JWT + OAuth)
+3. **Create database schema** with Drizzle ORM
+4. **Add request validation** with Zod schemas
+5. **Set up API documentation** with Swagger
+
+### Phase 2: External Integrations
+1. **Payment processing** (Stripe/PayPal integration)
+2. **Email/SMS services** (SendGrid/Twilio)
+3. **File storage** (AWS S3/Cloudflare R2)
+4. **Analytics tracking** (Google Analytics/Mixpanel)
+5. **Push notifications** (Firebase/OneSignal)
+
+### Phase 3: Advanced Features
+1. **Real-time features** with WebSockets
+2. **GraphQL API** alongside REST
+3. **API rate limiting** and caching
+4. **Webhook system** for third-party integrations
+5. **API versioning** and deprecation strategy
+
+### Phase 4: Production Readiness
+1. **API monitoring** and alerting
+2. **Load testing** and performance optimization
+3. **Security audits** and penetration testing
+4. **Documentation updates** and developer portal
+5. **API governance** and change management
+
+## 🔒 Security Best Practices
+
+### API Security Checklist
+- [ ] **Input Validation**: Zod schemas for all endpoints
+- [ ] **Authentication**: JWT with refresh token rotation
+- [ ] **Authorization**: Role-based access control (RBAC)
+- [ ] **Rate Limiting**: Token bucket algorithm per user
+- [ ] **CORS Configuration**: Restrict origins in production
+- [ ] **HTTPS Only**: Enforce SSL/TLS encryption
+- [ ] **API Keys**: Secure key management for external access
+- [ ] **Request Signing**: HMAC for webhook verification
+
+### Data Protection
+- [ ] **Encryption**: AES-256 for sensitive data at rest
+- [ ] **Tokenization**: PCI compliance for payment data
+- [ ] **Audit Logs**: Comprehensive API access logging
+- [ ] **GDPR Compliance**: Data portability and deletion
+- [ ] **Rate Limiting**: DDoS protection and abuse prevention
+
+This blueprint provides a production-ready API integration foundation with modern patterns, security best practices, and scalable architecture. 🚀✨
 """
 
 
@@ -367,55 +710,85 @@ def generate_blueprint_gemini(project_idea: str) -> str:
         return "❌ GEMINI_API_KEY not set. Please configure it in Hugging Face Spaces secrets."
     
     try:
-        client = genai.Client(api_key=GEMINI_API_KEY)
-        
+        # Configure the API key
+        genai.configure(api_key=GEMINI_API_KEY)
+
         # Try modern models first, fallback to older ones
         # Order: newest/fastest first
         model_names = [
             'gemini-1.5-flash',  # Fast and efficient (recommended)
             'gemini-1.5-pro',    # More capable, slower
+            'gemini-1.0-pro',    # Fallback to older model
         ]
-        
+
         response = None
         last_error = None
         used_model = None
-        
-        prompt = f"""Create a concise full-stack project blueprint for: {project_idea}
+
+        prompt = f"""Create a comprehensive full-stack project blueprint for: {project_idea}
 
 Include:
-1. Tech stack recommendations
-2. Architecture overview (ASCII diagram preferred)
-3. Key files structure
-4. Implementation steps
 
-Format as markdown. Be practical and production-ready."""
-        
+## Required Sections:
+1. **Tech Stack Recommendations** - Modern, scalable technologies
+2. **Architecture Overview** - Detailed ASCII diagram showing all components
+3. **API Integration Architecture** - RESTful APIs, GraphQL, webhooks, real-time features
+4. **Security & Authentication** - JWT, OAuth, rate limiting, API security
+5. **Database Design** - Schema, migrations, optimization strategies
+6. **Key Files Structure** - Complete project organization
+7. **External API Integrations** - Payment, email, file storage, analytics
+8. **API Documentation** - OpenAPI/Swagger specifications
+9. **Testing Strategy** - Unit, integration, and API testing
+10. **Deployment & DevOps** - CI/CD, monitoring, scaling
+
+## API Integration Focus:
+- RESTful API design patterns and best practices
+- GraphQL implementation for complex data fetching
+- Webhook handling for third-party integrations
+- Real-time features with WebSockets
+- API versioning strategies
+- Rate limiting and DDoS protection
+- Authentication and authorization patterns
+- API documentation and developer experience
+- Monitoring, logging, and analytics
+- Security hardening and compliance
+
+## Production Requirements:
+- Scalable architecture patterns
+- Error handling and resilience
+- Performance optimization
+- Monitoring and alerting
+- Security best practices
+- Developer experience considerations
+
+Format as comprehensive markdown with code examples where relevant. Be production-ready and include modern best practices. Emphasize API integration as a core architectural component."""
+
         # Try each model until one works
         for model_name in model_names:
             try:
-                response = client.models.generate_content(
-                    model=model_name,
-                    contents=prompt,
-                    config={
-                        "temperature": 0.7,
-                        "top_p": 0.95,
-                        "top_k": 40,
-                        "max_output_tokens": 2048,
-                    }
+                model = genai.GenerativeModel(model_name)
+                response = model.generate_content(
+                    prompt,
+                    generation_config=genai.types.GenerationConfig(
+                        temperature=0.7,
+                        top_p=0.95,
+                        top_k=40,
+                        max_output_tokens=2048,
+                    )
                 )
                 used_model = model_name
                 break  # Generation successful
             except Exception as e:
                 last_error = e
                 continue
-        
+
         if response is None:
             # If all models failed
             error_msg = f"❌ No available Gemini models found or generation failed. Last error: {str(last_error)}"
             error_msg += "\n\n💡 Tip: Check your API key and quota."
             error_msg += f"\n\nFalling back to demo mode...\n\n{generate_blueprint_demo(project_idea)}"
             return error_msg
-        
+
         return response.text
             
     except Exception as e:
