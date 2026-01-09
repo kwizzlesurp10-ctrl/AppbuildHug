@@ -18,7 +18,7 @@ except ImportError:
 
 # Try to import Gemini (optional)
 try:
-    import google.generativeai as genai
+    from google import genai
     GEMINI_AVAILABLE = True
 except ImportError:
     GEMINI_AVAILABLE = False
@@ -361,42 +361,24 @@ def generate_blueprint_demo(project_idea: str) -> str:
 def generate_blueprint_gemini(project_idea: str) -> str:
     """Generate a blueprint using Gemini API."""
     if not GEMINI_AVAILABLE:
-        return "❌ Gemini API not available. Install google-generativeai package."
+        return "❌ Gemini API not available. Install google-genai package."
     
     if not GEMINI_API_KEY:
         return "❌ GEMINI_API_KEY not set. Please configure it in Hugging Face Spaces secrets."
     
     try:
-        genai.configure(api_key=GEMINI_API_KEY)
+        client = genai.Client(api_key=GEMINI_API_KEY)
         
         # Try modern models first, fallback to older ones
         # Order: newest/fastest first
         model_names = [
             'gemini-1.5-flash',  # Fast and efficient (recommended)
             'gemini-1.5-pro',    # More capable, slower
-            'gemini-pro',        # Legacy fallback
         ]
         
-        model = None
+        response = None
         last_error = None
         used_model = None
-        
-        # Try each model until one works
-        for model_name in model_names:
-            try:
-                model = genai.GenerativeModel(model_name)
-                used_model = model_name
-                break  # Model initialized successfully
-            except Exception as e:
-                last_error = e
-                continue
-        
-        if model is None:
-            # If all models failed to initialize, provide helpful error
-            error_msg = f"❌ No available Gemini models found. Last error: {str(last_error)}"
-            error_msg += "\n\n💡 Tip: Update google-generativeai package: pip install --upgrade google-generativeai"
-            error_msg += f"\n\nFalling back to demo mode...\n\n{generate_blueprint_demo(project_idea)}"
-            return error_msg
         
         prompt = f"""Create a concise full-stack project blueprint for: {project_idea}
 
@@ -408,29 +390,33 @@ Include:
 
 Format as markdown. Be practical and production-ready."""
         
-        try:
-            # Try with generation config, fallback to simple call if it fails
+        # Try each model until one works
+        for model_name in model_names:
             try:
-                response = model.generate_content(
-                    prompt,
-                    generation_config={
+                response = client.models.generate_content(
+                    model=model_name,
+                    contents=prompt,
+                    config={
                         "temperature": 0.7,
                         "top_p": 0.95,
                         "top_k": 40,
                         "max_output_tokens": 2048,
                     }
                 )
-            except TypeError:
-                # Fallback to simple call if generation_config format not supported
-                response = model.generate_content(prompt)
-            
-            return response.text
-        except Exception as generate_error:
-            # Model initialized but generation failed
-            error_msg = f"❌ Error generating content with {used_model}: {str(generate_error)}"
-            error_msg += "\n\n💡 Tip: The model may not be available in your region or API version."
+                used_model = model_name
+                break  # Generation successful
+            except Exception as e:
+                last_error = e
+                continue
+        
+        if response is None:
+            # If all models failed
+            error_msg = f"❌ No available Gemini models found or generation failed. Last error: {str(last_error)}"
+            error_msg += "\n\n💡 Tip: Check your API key and quota."
             error_msg += f"\n\nFalling back to demo mode...\n\n{generate_blueprint_demo(project_idea)}"
             return error_msg
+        
+        return response.text
             
     except Exception as e:
         return f"❌ Error generating blueprint: {str(e)}\n\nFalling back to demo mode...\n\n{generate_blueprint_demo(project_idea)}"
@@ -464,8 +450,7 @@ def create_interface():
                     label="Describe your dream project...",
                     placeholder="e.g., A social media platform for developers with AI-powered code reviews",
                     lines=4,
-                    value="",
-                    show_copy_button=True
+                    value=""
                 )
 
                 use_gemini_checkbox = gr.Checkbox(
@@ -484,13 +469,14 @@ def create_interface():
                 animation_output = gr.HTML(
                     value=generate_animation_html(),
                     label="Project Architecture Visualization",
-                    height=450,
-                    show_copy_button=False
+                    height=450
                 )
         
         blueprint_output = gr.Markdown(
             value="*Enter a project idea and click 'Launch into Orbit' to generate your blueprint.*",
-            label="Project Blueprint"
+            label="Project Blueprint",
+            height=400,  # Add fixed height with scrolling
+            container=True
         )
         
         # Event handlers
@@ -533,6 +519,23 @@ if __name__ == "__main__":
             max-width: 1200px;
             margin: 0 auto;
             padding: 1rem;
+        }
+
+        /* Smooth scrolling behavior */
+        html {
+            scroll-behavior: smooth;
+        }
+
+        /* Sticky header */
+        .gradio-container > div:first-child {
+            position: sticky;
+            top: 0;
+            background: rgba(10, 0, 21, 0.95);
+            backdrop-filter: blur(10px);
+            border-bottom: 1px solid rgba(139, 92, 246, 0.3);
+            padding-bottom: 1rem;
+            margin-bottom: 1rem;
+            z-index: 100;
         }
 
         /* Responsive markdown */
@@ -593,6 +596,28 @@ if __name__ == "__main__":
             color: #e0e0e0 !important;
             font-size: clamp(0.85rem, 1.8vw, 0.95rem) !important;
             line-height: 1.6;
+            max-height: 400px !important;
+            overflow-y: auto !important;
+            overflow-x: hidden !important;
+        }
+
+        /* Improved scrolling for markdown content */
+        .output-markdown::-webkit-scrollbar {
+            width: 6px;
+        }
+
+        .output-markdown::-webkit-scrollbar-track {
+            background: rgba(59, 130, 246, 0.1);
+            border-radius: 3px;
+        }
+
+        .output-markdown::-webkit-scrollbar-thumb {
+            background: rgba(59, 130, 246, 0.5);
+            border-radius: 3px;
+        }
+
+        .output-markdown::-webkit-scrollbar-thumb:hover {
+            background: rgba(139, 92, 246, 0.7);
         }
 
         /* Responsive grid layout */
@@ -609,7 +634,7 @@ if __name__ == "__main__":
 
             /* Reduce animation canvas height on mobile */
             #canvas-container {
-                height: 350px !important;
+                height: 300px !important;
             }
 
             /* Adjust input height for mobile */
@@ -630,6 +655,17 @@ if __name__ == "__main__":
             /* Better spacing */
             .gr-markdown {
                 margin: 0.5rem 0 !important;
+            }
+
+            /* Improved scrolling on mobile */
+            .output-markdown {
+                max-height: 300px !important;
+                font-size: 0.9rem !important;
+            }
+
+            /* Better touch scrolling */
+            * {
+                -webkit-overflow-scrolling: touch;
             }
         }
 
@@ -699,6 +735,35 @@ if __name__ == "__main__":
 
         ::-webkit-scrollbar-thumb:hover {
             background: #8b5cf6;
+        }
+
+        /* Better overall page scrolling */
+        body {
+            overflow-y: auto;
+            overflow-x: hidden;
+        }
+
+        /* Prevent horizontal overflow */
+        .gradio-container {
+            overflow-x: hidden;
+        }
+
+        /* Ensure content doesn't break layout */
+        .gr-markdown {
+            word-wrap: break-word;
+            overflow-wrap: break-word;
+        }
+
+        /* Better spacing for long content */
+        .gr-markdown p, .gr-markdown li, .gr-markdown h3, .gr-markdown h4 {
+            margin-bottom: 0.5rem;
+        }
+
+        .gr-markdown code {
+            background: rgba(59, 130, 246, 0.1);
+            padding: 2px 4px;
+            border-radius: 3px;
+            font-size: 0.9em;
         }
         """
     )
